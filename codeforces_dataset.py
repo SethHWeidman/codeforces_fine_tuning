@@ -1,4 +1,3 @@
-# codeforces_dataset.py
 import pathlib
 import re
 import textwrap

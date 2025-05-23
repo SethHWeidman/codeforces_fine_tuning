@@ -1,3 +1,4 @@
+import argparse
 import ast
 from importlib import util
 import pathlib
@@ -7,6 +8,7 @@ import sys
 import textwrap
 import time
 
+import pandas as pd
 import openai
 
 import codeforces_dataset
@@ -16,6 +18,10 @@ OPENAI = openai.OpenAI()
 OPENAI_CHAT_COMPLETIONS_CLIENT = OPENAI.chat.completions
 MODEL_GPT_REASONING = "o4-mini"
 MAX_TOKENS = 8_192
+
+# o4-mini pricing (per 1M tokens)
+INPUT_TOKEN_PRICE = 1.1 / 1_000_000  # $1.100 / 1M tokens
+OUTPUT_TOKEN_PRICE = 4.4 / 1_000_000  # $4.400 / 1M tokens
 
 STATEMENTS_DIR = pathlib.Path("statements")
 TESTS_GENERATED_DIR = pathlib.Path("tests_generated")
@@ -282,7 +288,9 @@ def call_gpt_solution(problem_text: str) -> str:
     resp = OPENAI_CHAT_COMPLETIONS_CLIENT.create(
         model=MODEL_GPT_REASONING, messages=msgs, max_completion_tokens=MAX_TOKENS
     )
-    return resp.choices[0].message.content.strip()
+    content = resp.choices[0].message.content.strip()
+    usage = resp.usage  # has .prompt_tokens, .completion_tokens, .total_tokens
+    return content, usage
 
 
 def call_gpt_samples(problem_text: str) -> str:
@@ -293,7 +301,9 @@ def call_gpt_samples(problem_text: str) -> str:
     resp = OPENAI_CHAT_COMPLETIONS_CLIENT.create(
         model=MODEL_GPT_REASONING, messages=msgs, max_completion_tokens=MAX_TOKENS * 2
     )
-    return resp.choices[0].message.content.strip()
+    content = resp.choices[0].message.content.strip()
+    usage = resp.usage  # has .prompt_tokens, .completion_tokens, .total_tokens
+    return content, usage
 
 
 # ---------------------------------------------------------------------------
@@ -368,7 +378,7 @@ def score_samples(pid: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-def process_pid(pid: str):
+def process_pid(pid: str, print_costs: bool):
     # 1. download statement if missing
     if not (STATEMENTS_DIR / f"{pid}.txt").exists():
         codeforces_dataset.fetch_cf([pid], save_dir=str(STATEMENTS_DIR))
@@ -376,26 +386,68 @@ def process_pid(pid: str):
     problem_text = read_problem_text(pid)
 
     # 2. ---- solution ------------------------------------------
-    sol_text = call_gpt_solution(problem_text)
+    sol_text, sol_usage = call_gpt_solution(problem_text)
     sol_path = SOL_DIR / f"solution_{pid}.py"
     sol_path.write_text(sol_text + "\n", encoding="utf-8")
     print(f"📝 solution written → {sol_path}")
 
     # 3. ---- samples -------------------------------------------
     # samp_text = call_gpt_samples(problem_text)
-    samp_text = call_gpt_samples(problem_text)
+    samp_text, samp_usage = call_gpt_samples(problem_text)
     samp_path = TESTS_GENERATED_DIR / f"{pid}.txt"
     samp_path.write_text(samp_text + "\n", encoding="utf-8")
     print(f"🧪 samples written  → {samp_path}")
 
+    # 4. compute & print cost
+    if print_costs:
+        prompt_tokens = sol_usage.prompt_tokens + samp_usage.prompt_tokens
+        completion_tokens = sol_usage.completion_tokens + samp_usage.completion_tokens
+        total_tokens = sol_usage.total_tokens + samp_usage.total_tokens
+
+        prompt_cost = prompt_tokens * INPUT_TOKEN_PRICE
+        completion_cost = completion_tokens * OUTPUT_TOKEN_PRICE
+        total_cost = prompt_cost + completion_cost
+
+        print(
+            f"{pid}: tokens → prompt={prompt_tokens}, completion={completion_tokens}, "
+            f"total={total_tokens}"
+        )
+        print(
+            f"{pid}: cost  → prompt=${prompt_cost:.6f}, "
+            f"completion=${completion_cost:.6f}, total=${total_cost:.6f}"
+        )
+
     # 4. ---- quick score ---------------------------------------
     score_samples(pid)
+
+    # blank line between problems
+    print()
 
 
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # quick demo on three shuffled 1000-rated IDs
-    demo_ids = ["90A", "127B", "322A"]
-    for pid in demo_ids:
-        process_pid(pid)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--print_costs",
+        action="store_true",
+        help="Print token usage and cost per problem",
+    )
+    args = parser.parse_args()
+
+    numbers, names = [], []
+    with open('codeforces_1000.txt', 'r') as f:
+        for line in f:
+            line = line.strip()
+            if 'Submit' in line:
+                tokens = line.split()
+                idx = tokens.index('Submit')
+                numbers.append(tokens[0])
+                names.append(' '.join(tokens[1:idx]))
+
+    df = pd.DataFrame({'number': numbers, 'name': names}).sample(
+        frac=1, random_state=250428
+    )
+
+    for pid in df['number']:
+        process_pid(pid, args.print_costs)
         time.sleep(2)
