@@ -311,8 +311,23 @@ def score_samples(pid: str) -> None:
     """Run solution_<pid>.py on every sample and report pass count."""
     sol_path = SOL_DIR / f"solution_{pid}.py"
     samp_path = TESTS_GENERATED_DIR / f"{pid}.txt"
-    if not (sol_path.exists() and samp_path.exists()):
-        print("missing files")
+
+    # ensure both solution and generated tests exist
+    if not sol_path.exists() or not samp_path.exists():
+        print(f"Skipping {pid}: missing solution or tests file")
+        return
+
+    # load and parse the SAMPLES block
+    text = samp_path.read_text(encoding="utf-8")
+    m = re.search(r"SAMPLES\s*=\s*(\[.*\])", text, re.S)
+    if not m:
+        print(f"Skipping {pid}: no SAMPLES block found")
+        return
+
+    try:
+        SAMPLES: list[tuple[str, str]] = ast.literal_eval(m.group(1))
+    except (ValueError, SyntaxError) as e:
+        print(f"Skipping {pid}: could not parse SAMPLES (error: {e})")
         return
 
     # dynamic import
@@ -322,13 +337,6 @@ def score_samples(pid: str) -> None:
     if not hasattr(sol, "solve"):
         print("❌ solution has no solve()")
         return
-
-    with open(samp_path, "r", encoding="utf-8") as fh:
-        block = fh.read()
-
-    # naive parse: evaluate the SAMPLES list
-    m = re.search(r"SAMPLES\s*=\s*(\[.*\])", block, re.S)
-    SAMPLES: list[tuple[str, str]] = ast.literal_eval(m.group(1))
 
     passed, kept = 0, []
     for stdin_raw, expected_raw in SAMPLES:
@@ -382,6 +390,13 @@ def process_pid(pid: str, print_costs: bool):
     # 1. download statement if missing
     if not (STATEMENTS_DIR / f"{pid}.txt").exists():
         codeforces_dataset.fetch_cf([pid], save_dir=str(STATEMENTS_DIR))
+
+    # if we've already verified samples for this problem, skip it
+    verified_file = TESTS_VERIFIED_DIR / f"{pid}.txt"
+    if verified_file.exists():
+        print(f"Skipping {pid}: already has verified tests → {verified_file}")
+        print()  # keep the blank line separator
+        return
 
     problem_text = read_problem_text(pid)
 
