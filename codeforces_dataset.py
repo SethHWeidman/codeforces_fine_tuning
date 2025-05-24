@@ -125,9 +125,13 @@ def parse_problem_html(html: str, url: str = "") -> tuple[str, str]:
     formatted = re.sub(r"\${2,}", "$", formatted)
     formatted = "\n".join(line.lstrip() for line in formatted.splitlines())
 
-    # derive filename 1840B, etc.
-    m = re.search(r"/(\d+)/([A-Z])", url)
-    fname = f"{m.group(1)}{m.group(2)}.txt" if m else "problem.txt"
+    # derive filename 1840B, 1234B1.txt, etc.
+    m = re.search(r"/problem/(\d+)/([A-Za-z]\d*)", url)
+    if m:
+        contest, index = m.groups()
+        fname = f"{contest}{index}.txt"
+    else:
+        fname = "problem.txt"
     return fname, formatted + "\n"
 
 
