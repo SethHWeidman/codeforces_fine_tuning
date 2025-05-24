@@ -402,6 +402,17 @@ def process_pid(pid: str, print_costs: bool):
 
     # 2. ---- solution ------------------------------------------
     sol_text, sol_usage = call_gpt_solution(problem_text)
+
+    # sanity‐check that the model didn’t spit out an explanation or markdown
+    first = sol_text.strip().splitlines()[0]
+    if first.startswith(("```", "<reasoning>", "Explanation")) or "```" in sol_text:
+        print(
+            f"Skipping {pid}: solution not pure code (contains explanation or code "
+            "fences)"
+        )
+        print()  # blank line separator
+        return
+
     sol_path = SOL_DIR / f"solution_{pid}.py"
     sol_path.write_text(sol_text + "\n", encoding="utf-8")
     print(f"📝 solution written → {sol_path}")
