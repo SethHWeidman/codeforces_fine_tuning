@@ -1,4 +1,6 @@
+import argparse
 import ast
+from datetime import datetime
 import os
 from os import environ
 import pathlib
@@ -6,7 +8,6 @@ import re
 import sys
 import subprocess
 import tempfile
-from datetime import datetime
 import textwrap
 
 os.environ["HF_HOME"] = "/workspace/hf_cache"  # must come first
@@ -22,15 +23,28 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import const
 
 
+# ——— Command-line args ————————————————————————————————————————————————
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "-l",
+    "--problem_level",
+    type=int,
+    default=900,
+    help="Difficulty tier (e.g. 800, 900, 1000 …). Default is 900.",
+)
+args = parser.parse_args()
+LEVEL_STR = str(args.problem_level)
+
+
 # ————— Configuration —————
 ROOT = pathlib.Path("/workspace")
 AWS_BUCKET = "codeforces-fine-tuning"
 
 # Local directories
 DATA_DIR = ROOT / "s3" / "data"
-STATEMENTS_DIR = ROOT / "statements" / "1000"
-TESTS_DIR = ROOT / "tests_verified" / "1000"
-GENERATIONS_DIR = ROOT / "generations" / "1000"
+STATEMENTS_DIR = ROOT / "statements" / LEVEL_STR
+TESTS_DIR = ROOT / "tests_verified" / LEVEL_STR
+GENERATIONS_DIR = ROOT / "generations" / LEVEL_STR
 
 # Number of attempts per problem
 ATTEMPTS = 5
@@ -93,7 +107,8 @@ def fetch_metadata(
     s3_client: boto3.client, bucket: str, key: str, dest: pathlib.Path
 ) -> pd.DataFrame:
     """Downloads metadata from S3 and loads it into a DataFrame."""
-    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest_parent = dest.parent
+    dest_parent.mkdir(parents=True, exist_ok=True)
     s3_client.download_file(bucket, key, str(dest))
     return pd.read_csv(dest, dtype=str)
 
@@ -102,8 +117,8 @@ def fetch_problem_assets(
     s3_client: boto3.client, bucket: str, pid: str
 ) -> tuple[str, list[tuple[str, str]]]:
     """Downloads problem statement and test samples from S3."""
-    stmt_key = f"statements/1000/{pid}.txt"
-    tests_key = f"tests_verified/1000/{pid}.txt"
+    stmt_key = f"statements/{LEVEL_STR}/{pid}.txt"
+    tests_key = f"tests_verified/{LEVEL_STR}/{pid}.txt"
     stmt_file = STATEMENTS_DIR / f"{pid}.txt"
     tests_file = TESTS_DIR / f"{pid}.txt"
 
@@ -279,11 +294,10 @@ if __name__ == '__main__':
         print(f"Failed to set up AWS S3 client: {e}", file=sys.stderr)
         sys.exit(1)
 
-    metadata_file_path = DATA_DIR / 'codeforces_1000.csv'
+    meta_name = f"codeforces_{LEVEL_STR}.csv"
+    meta_local = DATA_DIR / meta_name
     try:
-        df = fetch_metadata(
-            S3_CLIENT, AWS_BUCKET, 'metadata/codeforces_1000.csv', metadata_file_path
-        )
+        df = fetch_metadata(S3_CLIENT, AWS_BUCKET, f'metadata/{meta_name}', meta_local)
     except Exception as e:
         print(f"Failed to fetch metadata from S3: {e}", file=sys.stderr)
         sys.exit(1)
@@ -297,7 +311,8 @@ if __name__ == '__main__':
     print("Model initialized.")
 
     # Renamed to avoid conflict with pid variable for log
-    for pid_original_case in df['number']:
+    for pid_original_case in ['1373A']:
+        # for pid_original_case in df['number']:
         if pd.isna(pid_original_case):
             print("Skipping NaN problem ID.")
             continue
@@ -346,7 +361,7 @@ if __name__ == '__main__':
                 log(f"Problem {pid}, Attempt {i}/{ATTEMPTS}")
                 try:
                     generation_output = generate_once(
-                        model, tokenizer, stmt, const.SYSTEM_PROMPT
+                        model, tokenizer, stmt, const.SYSTEM_PROMPT_GEMMA
                     )
                     log(
                         f"LLM Raw Output (Problem {pid}, Attempt "
