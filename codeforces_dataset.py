@@ -185,7 +185,7 @@ def _to_cf_url(s: str) -> str:
     return _CF_URL_TMPL.format(contest=contest, index=index.upper())
 
 
-def fetch_cf(ids_or_urls, *, save_dir: str = "dataset_output"):
+def fetch_cf(ids_or_urls, *, save_dir: str = "statements"):
     """
     Wraps your existing fetch_codeforces_problems(): it lets you mix URLs
     and compact IDs in one call.
