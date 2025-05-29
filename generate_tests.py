@@ -12,6 +12,7 @@ import pandas as pd
 import openai
 
 import codeforces_dataset
+import const
 
 # ------------------- SETUP ---------------------------------------------------
 OPENAI = openai.OpenAI()
@@ -23,252 +24,10 @@ MAX_TOKENS = 8_192
 INPUT_TOKEN_PRICE = 1.1 / 1_000_000  # $1.100 / 1M tokens
 OUTPUT_TOKEN_PRICE = 4.4 / 1_000_000  # $4.400 / 1M tokens
 
-STATEMENTS_DIR = pathlib.Path("statements")
-TESTS_GENERATED_DIR = pathlib.Path("tests_generated")
-TESTS_VERIFIED_DIR = pathlib.Path("tests_verified")
-SOL_DIR = pathlib.Path("solutions")
-for d in (TESTS_GENERATED_DIR, TESTS_VERIFIED_DIR, SOL_DIR, STATEMENTS_DIR):
-    d.mkdir(exist_ok=True)
-
-SYSTEM_SOL = """
-    You are a senior competitive-programming tutor creating a solution for a Codeforces 
-    problem.
-    
-    IMPORTANT FORMATTING REQUIREMENTS:
-    
-    1. Write ONLY Python code with NO markdown formatting, NO code fences/backticks,
-       and NO explanatory text.
-    2. DO NOT start with ```python or any other code block indicators.
-    3. Start your response DIRECTLY with the Python code itself.
-    4. End your response with the final line of code - add no summary or conclusion.
-
-    CODE STRUCTURE REQUIREMENTS:
-    
-    1. Your solution MUST include a function named 'solve()' that contains the main 
-       solution logic.
-    2. The `solve()` function MUST be called from within an `if __name__ == '__main__'` 
-       block.
-    3. Your code must correctly read from standard input and write to standard output.
-    4. Include detailed comments explaining your approach and key steps.
-    5. Ensure your solution handles all edge cases and constraints mentioned in the 
-       problem.
-    6. Use efficient algorithms and data structures appropriate for the problem 
-       constraints.
-    
-    Your code will be automatically executed against test cases, so it must be 
-    syntactically correct and follow the exact output format specified in the problem 
-    statement.
-"""
-
-SYSTEM_TEST_CASES = """
-    You are an expert competitive-programming coach.
-
-    For the Codeforces problem in the next message, generate a set of *adversarial* 
-    test files that break naive solutions.
-
-    Return **only** the following:
-
-    SAMPLES = [
-        # each element is (stdin, expected-stdout)
-        (
-            '''
-            <full stdin for one test, with newlines exactly as fed to the program>
-            ''',
-            '''
-            <exact stdout the correct solution must print>
-            '''
-        ),
-        ...
-    ]
-    
-    Rules
-    1.  Use triple-quoted Python string literals (`\"\"\" … \"\"\"`). Do *not* put 
-        backslash-escaped `\n` inside them.
-    2.  Each literal should **start and end on its own line** and contain a trailing 
-        newline (`\n`) at the end of the block, because that is what the real judge’s 
-        files look like.
-    3.  Do not write anything outside the required block.
-    4.  **Indentation rule** – inside the SAMPLES list every line (including the 
-        opening/closing triple quotes) must be indented by exactly four spaces, no 
-        more and no less.
-    5.  Limit: generate **at most 7 tuples**; pick the most diverse / hardest cases — 
-        do not list every permutation.        
-
-    Example: for the problem:
-    
-    B. Phone Numbers
-    time limit per test: time limit per test 2 seconds
-    memory limit per test: memory limit per test 256 megabytes
-
-    Winters are just damn freezing cold in Nvodsk! That's why a group of n friends prefers to take a taxi, order a pizza and call girls. The phone numbers in the city consist of three pairs of digits (for example, 12-34-56). Each friend has a phonebook of size s i (that's the number of phone numbers). We know that taxi numbers consist of six identical digits (for example, 22-22-22), the numbers of pizza deliveries should necessarily be decreasing sequences of six different digits (for example, 98-73-21), all other numbers are the girls' numbers.
-
-    You are given your friends' phone books. Calculate which friend is best to go to when you are interested in each of those things (who has maximal number of phone numbers of each type).
-
-    If the phone book of one person contains some number two times, you should count it twice . That is, each number should be taken into consideration the number of times it occurs in the phone book.
-
-    -----Input-----
-
-    The first line contains an integer n ( 1 ≤ n ≤ 100 ) — the number of friends.
-    Then follow n data blocks that describe each friend's phone books. Each block is presented in the following form: first goes the line that contains integer s i and string name i ( 0 ≤ s i ≤ 100 ) — the number of phone numbers in the phone book of the i -th friend and the name of the i -th friend. The name is a non-empty sequence of uppercase and lowercase Latin letters, containing no more than 20 characters. Next s i lines contain numbers as "XX-XX-XX", where X is arbitrary digits from 0 to 9 .
-
-    -----Output-----
-
-    In the first line print the phrase " If you want to call a taxi, you should call: ". Then print names of all friends whose phone books contain maximal number of taxi phone numbers.
-    In the second line print the phrase " If you want to order a pizza, you should call: ". Then print names of all friends who have maximal number of pizza phone numbers.
-    In the third line print the phrase " If you want to go to a cafe with a wonderful girl, you should call: ". Then print names of all friends who have maximal number of girls' phone numbers.
-    Print the names in the order in which they are given in the input data . Separate two consecutive names with a comma and a space. Each line should end with exactly one point. For clarifications concerning the output form, see sample tests. It is necessary that you follow the output form strictly . Extra spaces are not allowed.
-
-    -----Example-----
-    Input
-    4
-    2 Fedorov
-    22-22-22
-    98-76-54
-    3 Melnikov
-    75-19-09
-    23-45-67
-    99-99-98
-    7 Rogulenko
-    22-22-22
-    11-11-11
-    33-33-33
-    44-44-44
-    55-55-55
-    66-66-66
-    95-43-21
-    3 Kaluzhin
-    11-11-11
-    99-99-99
-    98-65-32
-    Output
-    If you want to call a taxi, you should call: Rogulenko.
-    If you want to order a pizza, you should call: Fedorov, Rogulenko, Kaluzhin.
-    If you want to go to a cafe with a wonderful girl, you should call: Melnikov.
-
-    Input
-    3
-    5 Gleb
-    66-66-66
-    55-55-55
-    01-01-01
-    65-43-21
-    12-34-56
-    3 Serega
-    55-55-55
-    87-65-43
-    65-55-21
-    5 Melnik
-    12-42-12
-    87-73-01
-    36-04-12
-    88-12-22
-    82-11-43
-    Output
-    If you want to call a taxi, you should call: Gleb.
-    If you want to order a pizza, you should call: Gleb, Serega.
-    If you want to go to a cafe with a wonderful girl, you should call: Melnik.
-
-    Input
-    3
-    3 Kulczynski
-    22-22-22
-    65-43-21
-    98-12-00
-    4 Pachocki
-    11-11-11
-    11-11-11
-    11-11-11
-    98-76-54
-    0 Smietanka
-    Output
-    If you want to call a taxi, you should call: Pachocki.
-    If you want to order a pizza, you should call: Kulczynski, Pachocki.
-    If you want to go to a cafe with a wonderful girl, you should call: Kulczynski.
-
-    -----Note-----
-    In the first sample you are given four friends. Fedorov 's phone book contains one taxi number and one pizza delivery number, Melnikov 's phone book only has 3 numbers of girls, Rogulenko 's one has 6 taxi numbers and one pizza delivery number, Kaluzhin 's one contains 2 taxi numbers and one pizza delivery number.
-    Thus, if you need to order a taxi, you should obviously call Rogulenko , if you need to order a pizza you should call anybody of the following: Rogulenko , Fedorov , Kaluzhin (each of them has one number). Melnikov has maximal number of phone numbers of girls.
-
-    The following would be valid SAMPLES
-
-    SAMPLES = [
-        (
-            '''
-            4
-            2 Fedorov
-            22-22-22
-            98-76-54
-            3 Melnikov
-            75-19-09
-            23-45-67
-            99-99-98
-            7 Rogulenko
-            22-22-22
-            11-11-11
-            33-33-33
-            44-44-44
-            55-55-55
-            66-66-66
-            95-43-21
-            3 Kaluzhin
-            11-11-11
-            99-99-99
-            98-65-32
-            ''',
-            '''
-            If you want to call a taxi, you should call: Rogulenko.
-            If you want to order a pizza, you should call: Fedorov, Rogulenko, Kaluzhin.
-            If you want to go to a cafe with a wonderful girl, you should call: Melnikov.
-            ''',
-        ),
-        (
-            '''
-            3
-            5 Gleb
-            66-66-66
-            55-55-55
-            01-01-01
-            65-43-21
-            12-34-56
-            3 Serega
-            55-55-55
-            87-65-43
-            65-55-21
-            5 Melnik
-            12-42-12
-            87-73-01
-            36-04-12
-            88-12-22
-            82-11-43
-            ''',
-            '''
-            If you want to call a taxi, you should call: Gleb.
-            If you want to order a pizza, you should call: Gleb, Serega.
-            If you want to go to a cafe with a wonderful girl, you should call: Melnik.
-            ''',
-        ),
-        (
-            '''
-            3
-            3 Kulczynski
-            22-22-22
-            65-43-21
-            98-12-00
-            4 Pachocki
-            11-11-11
-            11-11-11
-            11-11-11
-            98-76-54
-            0 Smietanka
-            ''',
-            '''
-            If you want to call a taxi, you should call: Pachocki.
-            If you want to order a pizza, you should call: Kulczynski, Pachocki.
-            If you want to go to a cafe with a wonderful girl, you should call: Kulczynski.
-            ''',
-        ),
-    ]
-"""
+STATEMENTS_DIR: pathlib.Path | None = None
+TESTS_GENERATED_DIR: pathlib.Path | None = None
+TESTS_VERIFIED_DIR: pathlib.Path | None = None
+SOL_DIR: pathlib.Path | None = None
 
 
 # ------------------- UTILITIES ----------------------------------------------
@@ -282,7 +41,7 @@ def read_problem_text(problem_id: str) -> str:
 
 def call_gpt_solution(problem_text: str) -> str:
     msgs = [
-        {"role": "system", "content": SYSTEM_SOL},
+        {"role": "system", "content": const.SYSTEM_SOL},
         {"role": "user", "content": problem_text},
     ]
     resp = OPENAI_CHAT_COMPLETIONS_CLIENT.create(
@@ -295,7 +54,7 @@ def call_gpt_solution(problem_text: str) -> str:
 
 def call_gpt_samples(problem_text: str) -> str:
     msgs = [
-        {"role": "system", "content": SYSTEM_TEST_CASES},
+        {"role": "system", "content": const.SYSTEM_TEST_CASES},
         {"role": "user", "content": problem_text},
     ]
     resp = OPENAI_CHAT_COMPLETIONS_CLIENT.create(
@@ -330,10 +89,27 @@ def score_samples(pid: str) -> None:
         print(f"Skipping {pid}: could not parse SAMPLES (error: {e})")
         return
 
+    # Validate that SAMPLES is a list of 2-tuples of strings
+    if not isinstance(SAMPLES, list):
+        print(f"Skipping {pid}: SAMPLES is not a list (got {type(SAMPLES).__name__})")
+        return
+    for i, sample in enumerate(SAMPLES):
+        if (
+            not isinstance(sample, (list, tuple))
+            or len(sample) != 2
+            or not all(isinstance(x, str) for x in sample)
+        ):
+            print(
+                f"Skipping {pid}: SAMPLES[{i}] is not a (stdin, expected) pair of "
+                f"strings → {sample!r}"
+            )
+            return
+
     # dynamic import
     spec = util.spec_from_file_location("solution", sol_path)
     sol = util.module_from_spec(spec)  # type: ignore
-    spec.loader.exec_module(sol)  # type: ignore
+    spec_loader = spec.loader
+    spec_loader.exec_module(sol)  # type: ignore
     if not hasattr(sol, "solve"):
         print("❌ solution has no solve()")
         return
@@ -386,17 +162,18 @@ def score_samples(pid: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-def process_pid(pid: str, print_costs: bool):
-    # 1. download statement if missing
-    if not (STATEMENTS_DIR / f"{pid}.txt").exists():
-        codeforces_dataset.fetch_cf([pid], save_dir=str(STATEMENTS_DIR))
+def process_pid(pid: str, print_costs: bool) -> bool:
+    print(f"\n── processing {pid} ──")
 
     # if we've already verified samples for this problem, skip it
     verified_file = TESTS_VERIFIED_DIR / f"{pid}.txt"
     if verified_file.exists():
         print(f"Skipping {pid}: already has verified tests → {verified_file}")
-        print()  # keep the blank line separator
-        return
+        return False
+
+    # 1. download statement if missing
+    if not (STATEMENTS_DIR / f"{pid}.txt").exists():
+        codeforces_dataset.fetch_cf([pid], save_dir=str(STATEMENTS_DIR))
 
     problem_text = read_problem_text(pid)
 
@@ -448,6 +225,7 @@ def process_pid(pid: str, print_costs: bool):
 
     # blank line between problems
     print()
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -458,10 +236,29 @@ if __name__ == "__main__":
         action="store_true",
         help="Print token usage and cost per problem",
     )
+    parser.add_argument(
+        "--problem_level",
+        type=int,
+        default=900,
+        help="""
+            The problem difficulty level, used to determine the input file (e.g., 
+            codeforces_<level>.txt). Default is 900.
+            """,
+    )
     args = parser.parse_args()
 
+    level_str = str(args.problem_level)
+    STATEMENTS_DIR = pathlib.Path("statements") / level_str
+    TESTS_GENERATED_DIR = pathlib.Path("tests_generated") / level_str
+    TESTS_VERIFIED_DIR = pathlib.Path("tests_verified") / level_str
+    SOL_DIR = pathlib.Path("solutions") / level_str
+
+    for d in (STATEMENTS_DIR, TESTS_GENERATED_DIR, TESTS_VERIFIED_DIR, SOL_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+
     numbers, names = [], []
-    with open('codeforces_1000.txt', 'r') as f:
+    problem_file = f'codeforces_{args.problem_level}.txt'
+    with open(problem_file, 'r') as f:
         for line in f:
             line = line.strip()
             if 'Submit' in line:
@@ -475,5 +272,6 @@ if __name__ == "__main__":
     )
 
     for pid in df['number']:
-        process_pid(pid, args.print_costs)
-        time.sleep(2)
+        did_run = process_pid(pid, args.print_costs)
+        if did_run:
+            time.sleep(2)
