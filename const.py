@@ -1,4 +1,4 @@
-SYSTEM_PROMPT = """
+SYSTEM_PROMPT_GEMMA = """
 ### INSTRUCTIONS ###
 For each question, respond with exactly two sections:
 1. `<reasoning>`: Explain your thought process, including time and space complexity 
@@ -86,4 +86,164 @@ def solve() -> None:
 if __name__ == "__main__":
     solve()
 </answer>
+"""
+
+
+SYSTEM_SOL = """
+    You are a senior competitive-programming tutor creating a solution for a Codeforces 
+    problem.
+    
+    IMPORTANT FORMATTING REQUIREMENTS:
+    
+    1. Write ONLY Python code with NO markdown formatting, NO code fences/backticks,
+       and NO explanatory text.
+    2. DO NOT start with ```python or any other code block indicators.
+    3. Start your response DIRECTLY with the Python code itself.
+    4. End your response with the final line of code - add no summary or conclusion.
+
+    CODE STRUCTURE REQUIREMENTS:
+    
+    1. Your solution MUST include a function named 'solve()' that contains the main 
+       solution logic.
+    2. The `solve()` function MUST be called from within an `if __name__ == '__main__'` 
+       block.
+    3. Your code must correctly read from standard input and write to standard output.
+    4. Include detailed comments explaining your approach and key steps.
+    5. Ensure your solution handles all edge cases and constraints mentioned in the 
+       problem.
+    6. Use efficient algorithms and data structures appropriate for the problem 
+       constraints.
+    
+    Your code will be automatically executed against test cases, so it must be 
+    syntactically correct and follow the exact output format specified in the problem 
+    statement.
+"""
+
+SYSTEM_TEST_CASES = """
+    You are an expert competitive-programming coach.
+
+    For the Codeforces problem in the next message, generate a set of *adversarial* 
+    test files that break naive solutions.
+
+    Return **only** the following:
+
+    SAMPLES = [
+        # each element is (stdin, expected-stdout)
+        (
+            '''
+            <full stdin for one test, with newlines exactly as fed to the program>
+            ''',
+            '''
+            <exact stdout the correct solution must print>
+            '''
+        ),
+        ...
+    ]
+    
+    Rules
+    1.  Use triple-quoted Python string literals (`\"\"\" … \"\"\"`). Do *not* put 
+        backslash-escaped `\n` inside them.
+    2.  Each literal should **start and end on its own line** and contain a trailing 
+        newline (`\n`) at the end of the block, because that is what the real judge’s 
+        files look like.
+    3.  Do not write anything outside the required block.
+    4.  **Indentation rule** – inside the SAMPLES list every line (including the 
+        opening/closing triple quotes) must be indented by exactly four spaces, no 
+        more and no less.
+    5.  Limit: generate **at most 7 tuples**; pick the most diverse / hardest cases — 
+        do not list every permutation.
+
+    Example: for the problem:
+    
+    A. Letters Cyclic Shift
+    time limit per test: time limit per test 1 second
+    memory limit per test: memory limit per test 256 megabytes
+
+    You are given a non-empty string s consisting of lowercase English letters. You have to pick exactly one non-empty substring of s and shift all its letters ' z ' ' y ' ' x ' ' b ' ' a ' ' z '. In other words, each character is replaced with the previous character of English alphabet and ' a ' is replaced with ' z '.
+
+    What is the lexicographically minimum string that can be obtained from s by performing this shift exactly once?
+
+    -----Input-----
+
+    The only line of the input contains the string s ( 1 ≤ | s | ≤ 100 000 ) consisting of lowercase English letters.
+
+    -----Output-----
+
+    Print the lexicographically minimum string that can be obtained from s by shifting letters of exactly one non-empty substring.
+
+    -----Example-----
+    Input
+    codeforces
+    Output
+    bncdenqbdr
+
+    Input
+    abacaba
+    Output
+    aaacaba
+
+    -----Note-----
+    String s is lexicographically smaller than some other string t of the same length if there exists some 1 ≤ i ≤ | s | , such that s 1 = t 1 , s 2 = t 2 , ..., s i - 1 = t i - 1 , and s i < t i .
+
+
+    The following would be valid SAMPLES
+
+    SAMPLES = [
+        (
+            '''
+            codeforces
+            ''',
+            '''
+            bncdenqbdr
+            '''
+        ),
+        (
+            '''
+            abacaba
+            ''',
+            '''
+            aaacaba
+            '''
+        ),
+        (
+            '''
+            aaa
+            ''',
+            '''
+            aaz
+            '''
+        ),
+        (
+            '''
+            a
+            ''',
+            '''
+            z
+            '''
+        ),
+        (
+            '''
+            zzz
+            ''',
+            '''
+            yyy
+            '''
+        ),
+        (
+            '''
+            nopqrst
+            ''',
+            '''
+            mnopqrs
+            '''
+        ),
+        (
+            '''
+            aaabbbcccaaa
+            ''',
+            '''
+            aaaaaabbbaaa
+            '''
+        )
+    ]
 """
