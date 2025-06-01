@@ -1,6 +1,7 @@
 import argparse
 import ast
 from datetime import datetime
+import getpass
 import os
 from os import environ
 import pathlib
@@ -62,8 +63,8 @@ def ensure_dirs(*dirs: pathlib.Path):
 
 def setup_aws() -> boto3.client:
     """Prompts for AWS credentials and initializes the S3 client."""
-    aws_key = input("AWS_ACCESS_KEY_ID: ")
-    aws_secret = input("AWS_SECRET_ACCESS_KEY: ")
+    aws_key = getpass.getpass("AWS_ACCESS_KEY_ID: ")
+    aws_secret = getpass.getpass("AWS_SECRET_ACCESS_KEY: ")
     environ.update({"AWS_ACCESS_KEY_ID": aws_key, "AWS_SECRET_ACCESS_KEY": aws_secret})
     return boto3.client("s3")
 
@@ -311,7 +312,7 @@ if __name__ == '__main__':
     print("Model initialized.")
 
     # Renamed to avoid conflict with pid variable for log
-    for pid_original_case in ['1373A']:
+    for pid_original_case in df['number']:
         # for pid_original_case in df['number']:
         if pd.isna(pid_original_case):
             print("Skipping NaN problem ID.")
