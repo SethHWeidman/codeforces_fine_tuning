@@ -1,6 +1,8 @@
 import argparse
 import ast
+import getpass
 from importlib import util
+from os import environ
 import pathlib
 import re
 import subprocess
@@ -8,13 +10,17 @@ import sys
 import textwrap
 import time
 
-import pandas as pd
+import boto3
 import openai
+import pandas as pd
 
 import codeforces_dataset
 import const
 
 # ------------------- SETUP ---------------------------------------------------
+AWS_BUCKET = "codeforces-fine-tuning"
+ROOT = pathlib.Path(".")
+DATA_DIR = ROOT / "s3" / "data"
 OPENAI = openai.OpenAI()
 OPENAI_CHAT_COMPLETIONS_CLIENT = OPENAI.chat.completions
 MODEL_GPT_REASONING = "o4-mini"
@@ -37,6 +43,28 @@ def read_problem_text(problem_id: str) -> str:
     if not filename.exists():
         raise FileNotFoundError(f"{filename} not found (did fetch_cf succeed?)")
     return filename.read_text(encoding="utf-8")
+
+
+def ensure_dirs(*dirs: pathlib.Path):
+    for d in dirs:
+        d.mkdir(parents=True, exist_ok=True)
+
+
+def fetch_metadata(
+    s3_client: boto3.client, bucket: str, key: str, dest: pathlib.Path
+) -> pd.DataFrame:
+    """Download `key` to `dest`, then load it with pandas."""
+    ensure_dirs(dest.parent)
+    s3_client.download_file(bucket, key, str(dest))
+    return pd.read_csv(dest, dtype=str)
+
+
+def setup_aws() -> boto3.client:
+    """Prompt for AWS credentials and create an S3 client."""
+    key = getpass.getpass("AWS_ACCESS_KEY_ID: ")
+    secret = getpass.getpass("AWS_SECRET_ACCESS_KEY: ")
+    environ.update(AWS_ACCESS_KEY_ID=key, AWS_SECRET_ACCESS_KEY=secret)
+    return boto3.client("s3")
 
 
 def call_gpt_solution(problem_text: str) -> str:
@@ -269,30 +297,23 @@ if __name__ == "__main__":
         help="Only generate test cases; do not call the LLM for solutions.",
     )
     args = parser.parse_args()
-
     level_str = str(args.problem_level)
     STATEMENTS_DIR = pathlib.Path("statements") / level_str
     TESTS_GENERATED_DIR = pathlib.Path("tests_generated") / level_str
     TESTS_VERIFIED_DIR = pathlib.Path("tests_verified") / level_str
     SOL_DIR = pathlib.Path("solutions") / level_str
 
-    for d in (STATEMENTS_DIR, TESTS_GENERATED_DIR, TESTS_VERIFIED_DIR, SOL_DIR):
-        d.mkdir(parents=True, exist_ok=True)
-
-    numbers, names = [], []
-    problem_file = f'codeforces_{args.problem_level}.txt'
-    with open(problem_file, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if 'Submit' in line:
-                tokens = line.split()
-                idx = tokens.index('Submit')
-                numbers.append(tokens[0])
-                names.append(' '.join(tokens[1:idx]))
-
-    df = pd.DataFrame({'number': numbers, 'name': names}).sample(
-        frac=1, random_state=250428
-    )
+    # ---- fetch metadata CSV from S3 ----------------------------------------
+    try:
+        S3_CLIENT = setup_aws()
+    except Exception as e:
+        sys.exit(f"Could not create S3 client: {e}")
+    meta_key = f"metadata/codeforces_{level_str}.csv"
+    meta_local = DATA_DIR / f"codeforces_{level_str}.csv"
+    try:
+        df = fetch_metadata(S3_CLIENT, AWS_BUCKET, meta_key, meta_local)
+    except Exception as e:
+        sys.exit(f"Failed to download {meta_key} from S3: {e}")
 
     for pid in df['number']:
         did_run = process_pid(pid, args.print_costs, args.tests_only)

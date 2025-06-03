@@ -313,7 +313,6 @@ if __name__ == '__main__':
 
     # Renamed to avoid conflict with pid variable for log
     for pid_original_case in df['number']:
-        # for pid_original_case in df['number']:
         if pd.isna(pid_original_case):
             print("Skipping NaN problem ID.")
             continue
