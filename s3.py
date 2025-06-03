@@ -61,13 +61,18 @@ def upload_folder_to_s3(
             S3_CLIENT.upload_file(Filename=local_path, Bucket=bucket_name, Key=s3_key)
 
 
-create_bucket_if_needed(S3_BUCKET_NAME)
+if __name__ == "__main__":
 
-# upload_folder_to_s3('statements/1000', 'statements/1000', bucket_name=S3_BUCKET_NAME)
-# upload_folder_to_s3(
-#     'tests_verified/1000', 'tests_verified/1000', bucket_name=S3_BUCKET_NAME
-# )
-# upload_folder_to_s3('statements/900', 'statements/900', bucket_name=S3_BUCKET_NAME)
-# upload_folder_to_s3(
-#     'tests_verified/900', 'tests_verified/900', bucket_name=S3_BUCKET_NAME
-# )
+    create_bucket_if_needed(S3_BUCKET_NAME)
+    for problem_level in [900, 1000, 1100]:
+
+        upload_folder_to_s3(
+            f'statements/{problem_level}',
+            f'statements/{problem_level}',
+            bucket_name=S3_BUCKET_NAME,
+        )
+        upload_folder_to_s3(
+            f'tests_verified/{problem_level}',
+            f'tests_verified/{problem_level}',
+            bucket_name=S3_BUCKET_NAME,
+        )
