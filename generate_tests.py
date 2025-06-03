@@ -107,9 +107,9 @@ def score_samples(pid: str) -> None:
 
     # dynamic import
     spec = util.spec_from_file_location("solution", sol_path)
-    sol = util.module_from_spec(spec)  # type: ignore
+    sol = util.module_from_spec(spec)
     spec_loader = spec.loader
-    spec_loader.exec_module(sol)  # type: ignore
+    spec_loader.exec_module(sol)
     if not hasattr(sol, "solve"):
         print("❌ solution has no solve()")
         return
@@ -120,14 +120,17 @@ def score_samples(pid: str) -> None:
         stdin = textwrap.dedent(stdin_raw).strip("\n") + "\n"
         expected = textwrap.dedent(expected_raw).strip()
 
-        # run solution
-        result = subprocess.run(
-            [sys.executable, sol_path],
-            input=stdin,
-            text=True,
-            capture_output=True,
-            timeout=2.0,
-        )
+        try:
+            result = subprocess.run(
+                [sys.executable, sol_path],
+                input=stdin,
+                text=True,
+                capture_output=True,
+                timeout=2.0,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"{pid}: 🛑 timed out on a sample – aborting scoring.")
+            raise
 
         actual = result.stdout.strip()  #  ← trims \n and spaces
         if actual == expected:
@@ -162,7 +165,7 @@ def score_samples(pid: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-def process_pid(pid: str, print_costs: bool) -> bool:
+def process_pid(pid: str, print_costs: bool, tests_only: bool) -> bool:
     print(f"\n── processing {pid} ──")
 
     # if we've already verified samples for this problem, skip it
@@ -177,32 +180,38 @@ def process_pid(pid: str, print_costs: bool) -> bool:
 
     problem_text = read_problem_text(pid)
 
-    # 2. ---- solution ------------------------------------------
-    sol_text, sol_usage = call_gpt_solution(problem_text)
-
-    # sanity‐check that the model didn’t spit out an explanation or markdown
-    first = sol_text.strip().splitlines()[0]
-    if first.startswith(("```", "<reasoning>", "Explanation")) or "```" in sol_text:
-        print(
-            f"Skipping {pid}: solution not pure code (contains explanation or code "
-            "fences)"
-        )
-        print()  # blank line separator
-        return
-
+    # 2. ---- solution (optional) ---------------------------------------
     sol_path = SOL_DIR / f"solution_{pid}.py"
-    sol_path.write_text(sol_text + "\n", encoding="utf-8")
-    print(f"📝 solution written → {sol_path}")
+
+    if tests_only:
+        # Re-use an existing solution, if it exists
+        if not sol_path.exists():
+            print(f"Skipping {pid}: --tests_only set but {sol_path} not found")
+            return False
+        sol_usage = None  # so we don’t try to use it later
+    else:
+        sol_text, sol_usage = call_gpt_solution(problem_text)
+
+        if not sol_text.strip():
+            print(f"Skipping {pid}: solution is blank")
+            return False
+
+        first = sol_text.strip().splitlines()[0]
+        if first.startswith(("```", "<reasoning>", "Explanation")) or "```" in sol_text:
+            print(f"Skipping {pid}: solution not pure code")
+            return False
+
+        sol_path.write_text(sol_text + "\n", encoding="utf-8")
+        print(f"📝 solution written → {sol_path}")
 
     # 3. ---- samples -------------------------------------------
-    # samp_text = call_gpt_samples(problem_text)
     samp_text, samp_usage = call_gpt_samples(problem_text)
     samp_path = TESTS_GENERATED_DIR / f"{pid}.txt"
     samp_path.write_text(samp_text + "\n", encoding="utf-8")
     print(f"🧪 samples written  → {samp_path}")
 
     # 4. compute & print cost
-    if print_costs:
+    if print_costs and not tests_only and sol_usage is not None:
         prompt_tokens = sol_usage.prompt_tokens + samp_usage.prompt_tokens
         completion_tokens = sol_usage.completion_tokens + samp_usage.completion_tokens
         total_tokens = sol_usage.total_tokens + samp_usage.total_tokens
@@ -221,7 +230,16 @@ def process_pid(pid: str, print_costs: bool) -> bool:
         )
 
     # 4. ---- quick score ---------------------------------------
-    score_samples(pid)
+    try:
+        score_samples(pid)
+    except subprocess.SubprocessError as e:
+        # Any timeout or other subprocess-related failure → nuke the bad solution
+        print(
+            f"⚠️  {pid}: scoring failed ({e.__class__.__name__}). Removing bad solution "
+            "file and skipping."
+        )
+        (SOL_DIR / f"solution_{pid}.py").unlink(missing_ok=True)
+        return False
 
     # blank line between problems
     print()
@@ -244,6 +262,11 @@ if __name__ == "__main__":
             The problem difficulty level, used to determine the input file (e.g., 
             codeforces_<level>.txt). Default is 900.
             """,
+    )
+    parser.add_argument(
+        "--tests_only",
+        action="store_true",
+        help="Only generate test cases; do not call the LLM for solutions.",
     )
     args = parser.parse_args()
 
@@ -272,6 +295,6 @@ if __name__ == "__main__":
     )
 
     for pid in df['number']:
-        did_run = process_pid(pid, args.print_costs)
+        did_run = process_pid(pid, args.print_costs, args.tests_only)
         if did_run:
             time.sleep(2)
