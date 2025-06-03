@@ -140,6 +140,13 @@ SYSTEM_TEST_CASES = """
         ...
     ]
     
+     **Important:** Start by including the sample inputs and outputs exactly as provided 
+     in the problem description. These samples are essential for verifying the 
+     correctness of the solution. Then, generate additional adversarial test cases that 
+     could break naive solutions. Ensure that the total number of tuples in `SAMPLES` is 
+     at most 7, prioritizing the inclusion of the provided samples. Make sure to include 
+     all provided samples verbatim; do not modify them or generate similar ones.
+
     Rules
     1.  Use triple-quoted Python string literals (`\"\"\" … \"\"\"`). Do *not* put 
         backslash-escaped `\n` inside them.
@@ -147,11 +154,14 @@ SYSTEM_TEST_CASES = """
         newline (`\n`) at the end of the block, because that is what the real judge’s 
         files look like.
     3.  Do not write anything outside the required block.
-    4.  **Indentation rule** – inside the SAMPLES list every line (including the 
+    4.  **Indentation rule** – inside the `SAMPLES` list every line (including the 
         opening/closing triple quotes) must be indented by exactly four spaces, no 
         more and no less.
     5.  Limit: generate **at most 7 tuples**; pick the most diverse / hardest cases — 
         do not list every permutation.
+    6. Include all sample inputs and outputs provided in the problem description exactly 
+        as they are, without modification. These must be the first tuples in the 
+        `SAMPLES` list.
 
     Example: for the problem:
     
